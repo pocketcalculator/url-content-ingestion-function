@@ -74,8 +74,8 @@ Output: JSON documents ready for AI Search
 ### Prerequisites
 
 - Python 3.10+
-- Azure Storage Account (for blob storage)
-- Azure Functions Core Tools
+- Node.js 18+ (for Azure Functions Core Tools and Azurite)
+- Azure Storage Account (for blob storage in production; Azurite emulator for local dev)
 
 ### Local Development
 
@@ -84,23 +84,53 @@ Output: JSON documents ready for AI Search
 cd <your-project-folder>
 ```
 
-2. **Create Python virtual environment**
+2. **Install Azure Functions Core Tools** (one-time)
 ```bash
-python -m venv venv
+npm install -g azure-functions-core-tools@4 --allow-scripts=azure-functions-core-tools
+```
+
+> On Linux/macOS, if npm installs to a non-standard prefix, add it to your PATH:
+> ```bash
+> npm config set prefix ~/.npm-global
+> export PATH="$HOME/.npm-global/bin:$PATH"  # Add this to ~/.bashrc to make it permanent
+> ```
+> Verify with: `func --version`
+
+3. **Install Azurite** (local Azure Storage emulator, one-time)
+```bash
+npm install -g azurite
+```
+
+4. **Create Python virtual environment**
+```bash
+python3 -m venv venv
 source venv/bin/activate  # On Windows: venv\Scripts\activate
 ```
 
-3. **Install dependencies**
+5. **Install dependencies**
 ```bash
 pip install -r requirements.txt
 ```
 
-4. **Install Playwright browsers** (one-time)
+6. **Install Playwright browsers** (one-time)
 ```bash
 playwright install chromium
 ```
 
-5. **Configure local.settings.json**
+7. **Configure local.settings.json**
+
+For local development using the Azurite emulator:
+```json
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "python"
+  }
+}
+```
+
+To use a real Azure Storage account instead:
 ```json
 {
   "IsEncrypted": false,
@@ -111,12 +141,33 @@ playwright install chromium
 }
 ```
 
-6. **Run locally**
+> `local.settings.json` is excluded from version control — you must create it on each machine.
+
+8. **Start Azurite** (in a separate terminal, required when `upload_to_blob` is `true`)
 ```bash
+azurite --location /tmp/azurite --silent
+```
+
+9. **Run locally** (in a separate terminal with the venv activated)
+```bash
+source venv/bin/activate
 func start
 ```
 
 The function will be available at: `http://localhost:7071/api/scrape-url`
+
+### Verify the Setup
+
+Run the component test (no Azure runtime required — tests scraping and chunking directly):
+```bash
+source venv/bin/activate
+python test_scraper_direct.py
+```
+
+Then confirm the function host is responding:
+```bash
+curl http://localhost:7071/api/health
+```
 
 ## API Usage
 
