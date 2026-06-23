@@ -49,6 +49,7 @@ local.settings.json
 
 # Playwright
 .playwright/
+playwright-browsers/
 
 # OS
 .DS_Store
@@ -58,10 +59,29 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+test-results/
 
 # Misc
 .env
 .env.local
+*.env
+
+# Azurite local storage emulator data
+__azurite*/
+azurite_db*/
+.azurite/
+
+# Azure deployment artifacts
+.python_packages/
+.funcignore
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
 # Squad: ignore runtime state (logs, inbox, sessions)
 .squad/orchestration-log/
 .squad/log/
