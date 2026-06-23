@@ -1,5 +1,5 @@
 metadata name = 'URL Content Ingestion Function Infrastructure'
-metadata description = 'Deploys storage, Application Insights, hosting plan, and a Python Azure Function App.'
+metadata description = 'Deploys storage, blob container, Log Analytics, Application Insights, hosting plan, and a Python Azure Function App.'
 
 targetScope = 'resourceGroup'
 
@@ -19,11 +19,14 @@ param location string = resourceGroup().location
   '3.11'
   '3.12'
 ])
-param pythonVersion string = '3.11'
+param pythonVersion string = '3.12'
 
 /*
  * Monitoring Parameters
  */
+
+@description('Log Analytics workspace name. Defaults to <functionAppName>-law.')
+param logAnalyticsWorkspaceName string = '${functionAppName}-law'
 
 @description('Application Insights resource name. Defaults to <functionAppName>-appi.')
 param appInsightsName string = '${functionAppName}-appi'
@@ -41,12 +44,16 @@ param appInsightsName string = '${functionAppName}-appi'
 ])
 param storageSkuName string = 'Standard_LRS'
 
+@description('Blob container name for scraped content documents.')
+param blobContainerName string = 'scraped-content'
+
 /*
  * Variables
  */
 
 var storageAccountName = toLower('st${uniqueString(resourceGroup().id, functionAppName)}')
 var hostingPlanName = '${functionAppName}-plan'
+var storageConnectionString = 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${storageAccount.listKeys().keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
 
 /*
  * Resources
@@ -67,13 +74,38 @@ resource storageAccount 'Microsoft.Storage/storageAccounts@2023-05-01' = {
   }
 }
 
+resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2023-05-01' = {
+  parent: storageAccount
+  name: 'default'
+}
+
+resource scrapedContentContainer 'Microsoft.Storage/storageAccounts/blobServices/containers@2023-05-01' = {
+  parent: blobService
+  name: blobContainerName
+  properties: {
+    publicAccess: 'None'
+  }
+}
+
+resource logAnalyticsWorkspace 'Microsoft.OperationalInsights/workspaces@2023-09-01' = {
+  name: logAnalyticsWorkspaceName
+  location: location
+  properties: {
+    sku: {
+      name: 'PerGB2018'
+    }
+    retentionInDays: 30
+  }
+}
+
 resource appInsights 'Microsoft.Insights/components@2020-02-02' = {
   name: appInsightsName
   location: location
   kind: 'web'
   properties: {
     Application_Type: 'web'
-    IngestionMode: 'ApplicationInsights'
+    WorkspaceResourceId: logAnalyticsWorkspace.id
+    IngestionMode: 'LogAnalytics'
   }
 }
 
@@ -110,7 +142,7 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
       appSettings: [
         {
           name: 'AzureWebJobsStorage'
-          value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};AccountKey=${listKeys(storageAccount.id, storageAccount.apiVersion).keys[0].value};EndpointSuffix=${environment().suffixes.storage}'
+          value: storageConnectionString
         }
         {
           name: 'FUNCTIONS_EXTENSION_VERSION'
@@ -132,9 +164,26 @@ resource functionApp 'Microsoft.Web/sites@2023-12-01' = {
           name: 'WEBSITE_RUN_FROM_PACKAGE'
           value: '1'
         }
+        {
+          // Enables pip install of requirements.txt during remote build
+          name: 'SCM_DO_BUILD_DURING_DEPLOYMENT'
+          value: '1'
+        }
+        {
+          // Required for Oryx-based remote build on Linux consumption plan
+          name: 'ENABLE_ORYX_BUILD'
+          value: 'true'
+        }
+        {
+          name: 'BLOB_CONTAINER_NAME'
+          value: blobContainerName
+        }
       ]
     }
   }
+  dependsOn: [
+    scrapedContentContainer
+  ]
 }
 
 /*
@@ -150,5 +199,11 @@ output scrapeEndpoint string = 'https://${functionApp.properties.defaultHostName
 @description('Health endpoint URL.')
 output healthEndpoint string = 'https://${functionApp.properties.defaultHostName}/api/health'
 
-@description('System-generated storage account name used by the Function App.')
+@description('System-generated storage account name.')
 output storageAccountNameOut string = storageAccount.name
+
+@description('Blob container name for scraped content.')
+output blobContainerNameOut string = scrapedContentContainer.name
+
+@description('Log Analytics workspace resource ID.')
+output logAnalyticsWorkspaceId string = logAnalyticsWorkspace.id

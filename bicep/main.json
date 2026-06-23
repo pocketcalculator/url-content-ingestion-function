@@ -4,11 +4,11 @@
   "metadata": {
     "_generator": {
       "name": "bicep",
-      "version": "0.42.1.51946",
-      "templateHash": "4507732003325814540"
+      "version": "0.38.33.27573",
+      "templateHash": "13428098603544567011"
     },
     "name": "URL Content Ingestion Function Infrastructure",
-    "description": "Deploys storage, Application Insights, hosting plan, and a Python Azure Function App."
+    "description": "Deploys storage, blob container, Log Analytics, Application Insights, hosting plan, and a Python Azure Function App."
   },
   "parameters": {
     "functionAppName": {
@@ -26,7 +26,7 @@
     },
     "pythonVersion": {
       "type": "string",
-      "defaultValue": "3.11",
+      "defaultValue": "3.12",
       "allowedValues": [
         "3.10",
         "3.11",
@@ -34,6 +34,13 @@
       ],
       "metadata": {
         "description": "Python runtime version for the Function App."
+      }
+    },
+    "logAnalyticsWorkspaceName": {
+      "type": "string",
+      "defaultValue": "[format('{0}-law', parameters('functionAppName'))]",
+      "metadata": {
+        "description": "Log Analytics workspace name. Defaults to <functionAppName>-law."
       }
     },
     "appInsightsName": {
@@ -54,6 +61,13 @@
       ],
       "metadata": {
         "description": "Storage account SKU name."
+      }
+    },
+    "blobContainerName": {
+      "type": "string",
+      "defaultValue": "scraped-content",
+      "metadata": {
+        "description": "Blob container name for scraped content documents."
       }
     }
   },
@@ -79,6 +93,37 @@
       }
     },
     {
+      "type": "Microsoft.Storage/storageAccounts/blobServices",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}', variables('storageAccountName'), 'default')]",
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Storage/storageAccounts/blobServices/containers",
+      "apiVersion": "2023-05-01",
+      "name": "[format('{0}/{1}/{2}', variables('storageAccountName'), 'default', parameters('blobContainerName'))]",
+      "properties": {
+        "publicAccess": "None"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices', variables('storageAccountName'), 'default')]"
+      ]
+    },
+    {
+      "type": "Microsoft.OperationalInsights/workspaces",
+      "apiVersion": "2023-09-01",
+      "name": "[parameters('logAnalyticsWorkspaceName')]",
+      "location": "[parameters('location')]",
+      "properties": {
+        "sku": {
+          "name": "PerGB2018"
+        },
+        "retentionInDays": 30
+      }
+    },
+    {
       "type": "Microsoft.Insights/components",
       "apiVersion": "2020-02-02",
       "name": "[parameters('appInsightsName')]",
@@ -86,8 +131,12 @@
       "kind": "web",
       "properties": {
         "Application_Type": "web",
-        "IngestionMode": "ApplicationInsights"
-      }
+        "WorkspaceResourceId": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]",
+        "IngestionMode": "LogAnalytics"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
+      ]
     },
     {
       "type": "Microsoft.Web/serverfarms",
@@ -146,6 +195,18 @@
             {
               "name": "WEBSITE_RUN_FROM_PACKAGE",
               "value": "1"
+            },
+            {
+              "name": "SCM_DO_BUILD_DURING_DEPLOYMENT",
+              "value": "1"
+            },
+            {
+              "name": "ENABLE_ORYX_BUILD",
+              "value": "true"
+            },
+            {
+              "name": "BLOB_CONTAINER_NAME",
+              "value": "[parameters('blobContainerName')]"
             }
           ]
         }
@@ -153,6 +214,7 @@
       "dependsOn": [
         "[resourceId('Microsoft.Insights/components', parameters('appInsightsName'))]",
         "[resourceId('Microsoft.Web/serverfarms', variables('hostingPlanName'))]",
+        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageAccountName'), 'default', parameters('blobContainerName'))]",
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
       ]
     }
@@ -182,9 +244,23 @@
     "storageAccountNameOut": {
       "type": "string",
       "metadata": {
-        "description": "System-generated storage account name used by the Function App."
+        "description": "System-generated storage account name."
       },
       "value": "[variables('storageAccountName')]"
+    },
+    "blobContainerNameOut": {
+      "type": "string",
+      "metadata": {
+        "description": "Blob container name for scraped content."
+      },
+      "value": "[parameters('blobContainerName')]"
+    },
+    "logAnalyticsWorkspaceId": {
+      "type": "string",
+      "metadata": {
+        "description": "Log Analytics workspace resource ID."
+      },
+      "value": "[resourceId('Microsoft.OperationalInsights/workspaces', parameters('logAnalyticsWorkspaceName'))]"
     }
   }
 }
