@@ -26,10 +26,7 @@ from typing import Optional
 
 import azure.functions as func
 
-from chunker import TextChunker
 from logger import StructuredLogger
-from scraper import ContentScraper
-from storage import BlobStorage
 
 logger = StructuredLogger(__name__)
 
@@ -61,6 +58,11 @@ async def scrape_url_handler(req: func.HttpRequest) -> func.HttpResponse:
             "url": url,
             "upload_to_blob": upload_to_blob
         })
+
+        # Defer imports so host can index routes even if scrape dependencies are missing.
+        from chunker import TextChunker
+        from scraper import ContentScraper
+        from storage import BlobStorage
         
         # Scrape content
         scraper = ContentScraper()

@@ -11,7 +11,6 @@ from urllib.parse import urlparse
 import requests
 import trafilatura
 from bs4 import BeautifulSoup
-from playwright.async_api import async_playwright
 
 from logger import StructuredLogger
 
@@ -40,6 +39,9 @@ class ContentScraper:
         Returns HTML content or None on failure.
         """
         try:
+            # Import lazily so missing Playwright does not break Azure Function indexing.
+            from playwright.async_api import async_playwright
+
             async with async_playwright() as p:
                 browser = await p.chromium.launch(headless=True)
                 page = await browser.new_page(user_agent=ContentScraper.USER_AGENT)
